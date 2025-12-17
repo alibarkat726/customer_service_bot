@@ -1,0 +1,69 @@
+# =========================
+# 🔐 Environment / Secrets
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+# 🐍 Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# =========================
+# 🧪 Virtual Environments
+# =========================
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# 🧠 FastAPI / Uvicorn
+# =========================
+*.log
+logs/
+uvicorn.log
+
+# =========================
+# 🗄️ Databases
+# =========================
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# 🔁 Migrations / Cache
+# =========================
+alembic/versions/__pycache__/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# 🧑‍💻 IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# 🧠 LangChain / AI Cache
+# =========================
+.langchain_cache/
+.cache/
+hf_cache/
+torch_cache/
+
