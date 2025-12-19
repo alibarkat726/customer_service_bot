@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import uuid
 from app import sockets_conn
 import os
+import datetime
 from app.models import message_status,Replied_by,Vectors_base
 from langchain_core.runnables import RunnableLambda,RunnableBranch
 from sqlalchemy import select
@@ -148,18 +149,18 @@ async def check_llm_config(inputs):
     customer_id = inputs["customer_id"]
     query = inputs["query"]
 
-    config = await crud.get_system_config(db)
+    # Check room-specific configuration
+    room = await crud.get_or_create_room(db, customer_id)
     message_id = str(uuid.uuid4())
 
-    if not config.llm_enabled:
-        
-            return {
-                **inputs,           
-                "message_id": message_id,
-                "customer_id":customer_id,
-                "query":query,
-                "stop":True
-            }
+    if not room.llm_enabled:
+        return {
+            **inputs,           
+            "message_id": message_id,
+            "customer_id": customer_id,
+            "query": query,
+            "stop": True
+        }
 
     return {
         **inputs,
@@ -197,10 +198,10 @@ async def build_messages(inputs):
 
     system_prompt = f"""
 You are a helpful customer service agent.Which should always response as a good 
-cutomer service agent.Answer the queries with a soft getsure and don't Halucinate. 
+cutomer service agent.Answer the queries with a soft getsure and don't Halucinate.
+and dont do counter questions to the user
 Use ONLY this context:
 {context}
-
 If unrelated, reply:
 "SORRY I’m not aware of this. Can you ask something related to our business?"
 """
@@ -214,7 +215,6 @@ If unrelated, reply:
     messages.append(HumanMessage(content=inputs["query"]))
 
     return {**inputs, "messages": messages}
-
 
 async def run_llm(inputs):
     if inputs.get("stop"):
@@ -231,13 +231,12 @@ async def save_message(inputs):
         inputs["message_id"],
         inputs["customer_id"],
         inputs["query"],
-        
         status=message_status.replied,
         replier=Replied_by.llm,
-        Reply_status=reply_status.not_replied,
-        reply=inputs["answer"]
+        Reply_status=reply_status.delivered,
+        reply=inputs["answer"],
+        replied_at=datetime.datetime.utcnow()        
     )
-
     return inputs["answer"]
 async def embed_query(inputs):
     if inputs.get("stop"):

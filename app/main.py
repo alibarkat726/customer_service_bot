@@ -14,7 +14,6 @@ async def lifespan(app: FastAPI):
     await init_db(engine)
     yield
 app = FastAPI(lifespan=lifespan)
-# app = FastAPI()
 app.include_router(router=router)
 class QueryRequest(BaseModel):
     query: str
@@ -24,7 +23,6 @@ class DocRequest(BaseModel):
 
 class BatchDocRequest(BaseModel):
     documents: List[str]
-
 
 @app.get("/")
 async def root():
@@ -37,10 +35,10 @@ async def get_customer_messages(customer_id:int,db:AsyncSession = Depends(databa
         return response
     except Exception as e:
         print(f"Unable to find messages {e}")
-@app.post("/ask")
-async def ask_question(request: QueryRequest,customer_id:int, db: AsyncSession = Depends(database.get_db)):
-    response = await service.process_query(db,customer_id,request.query)
-    return {"response": response}
+# @app.post("/ask")
+# async def ask_question(request: QueryRequest,customer_id:int, db: AsyncSession = Depends(database.get_db)):
+#     response = await service.process_query(db,customer_id,request.query)
+#     return {"response": response}
 
 @app.post("/llm/enable")
 async def enable_llm(enabled: bool, db: AsyncSession = Depends(database.get_db)):
@@ -60,5 +58,5 @@ async def add_many_documents(request: BatchDocRequest, db: AsyncSession = Depend
         {"content": content, "embedding": emb} 
         for content, emb in zip(request.documents, embeddings)
     ]
-    await crud.add_document(db, docs_data)
+    await crud.add_many_documents(db, docs_data)
     return {"message": f"{len(docs_data)} documents added successfully"}

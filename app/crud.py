@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 import datetime
-from app.models import Vectors_base,SystemConfig
+from app.models import Vectors_base, SystemConfig, Room
 from pgvector.sqlalchemy import Vector
 import hashlib
+from typing import Optional
 
 from app.models import CustomerMessage,message_status,Replied_by,reply_status
 async def get_system_config(db: AsyncSession):
@@ -47,7 +48,11 @@ from sqlalchemy import select, update
 from app.models import CustomerMessage
 import datetime
 
-async def create_customer_message(db: AsyncSession,message_id: str, customer_id: int, content: str,status:message_status,replier:Replied_by,reply:str,Reply_status:reply_status):
+async def create_customer_message(
+        db: AsyncSession,message_id: str,
+        customer_id: int, content: str,
+        status:message_status,replier:Replied_by,
+        reply:str,Reply_status:reply_status, replied_at: Optional[datetime.datetime] = None):
     msg = CustomerMessage(
         id=message_id,
         message_status =status,
@@ -55,7 +60,8 @@ async def create_customer_message(db: AsyncSession,message_id: str, customer_id:
         content=content,
         reply =reply,
         replied_by = replier,
-        reply_status =Reply_status,
+        reply_status = Reply_status,
+        replied_at = replied_at,
         created_at=datetime.datetime.utcnow()
     )
     db.add(msg)
@@ -158,3 +164,24 @@ async def get_pending_replies(db:AsyncSession):
 
 
 
+
+async def get_or_create_room(db: AsyncSession, customer_id: int):
+    result = await db.execute(select(Room).where(Room.customer_id == customer_id))
+    room = result.scalars().first()
+    if not room:
+        room = Room(customer_id=customer_id, llm_enabled=True)
+        db.add(room)
+        await db.commit()
+        await db.refresh(room)
+    return room
+
+async def update_room_llm(db: AsyncSession, customer_id: int, enabled: bool):
+    room = await get_or_create_room(db, customer_id)
+    room.llm_enabled = enabled
+    await db.commit()
+    await db.refresh(room)
+    return room
+
+async def get_room(db: AsyncSession, customer_id: int):
+    result = await db.execute(select(Room).where(Room.customer_id == customer_id))
+    return result.scalars().first()

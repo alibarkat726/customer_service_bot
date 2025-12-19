@@ -1,17 +1,19 @@
 
 import uuid
+import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.sockets_conn import customer_manager, owner_manager
-from app import crud,models
+from app import crud, models, service
 from app.database import get_db  
 
 router = APIRouter()
-
 @router.websocket("/ws/customer/{customer_id}")
-async def websocket_customer(websocket: WebSocket, customer_id: int,db:AsyncSession= Depends(get_db)):
+async def websocket_customer(websocket: WebSocket, customer_id: int, db: AsyncSession = Depends(get_db)):
     try:
         await customer_manager.connect(customer_id, websocket)
+        await crud.get_or_create_room(db, customer_id)
+        
         pending_replies = await crud.get_pending_replies(db)
         for reply in pending_replies:
             try:
@@ -19,18 +21,47 @@ async def websocket_customer(websocket: WebSocket, customer_id: int,db:AsyncSess
                 await websocket.send_json({
                     "type": "pending_message",
                     "message_id": reply.id,
-                    "reply":reply.reply
-            })
-                await crud.mark_as_delivered(db,reply.id)
+                    "reply": reply.reply
+                })
+                await crud.mark_as_delivered(db, reply.id)
             except Exception:
-                return "Unable to mark as delivered"
-    
-    
+                pass 
+       
     except Exception:
         return "Unable to connect the socket"
     try:
         while True:
-            data = await websocket.receive_text()
+            raw_data = await websocket.receive_text()
+            try:
+                
+                data = json.loads(raw_data)
+                if isinstance(data, dict) and "query" in data:
+                    query = data["query"]
+                else:
+                    query = raw_data
+            except json.JSONDecodeError:
+
+                query = raw_data
+            
+            response = await service.process_query(db, customer_id, query)
+            
+            if isinstance(response, str):
+                await websocket.send_json({
+                    "type": "llm_reply",
+                    "reply": response
+                })
+                await owner_manager.broadcast({
+                    "type": "chat_update",
+                    "customer_id": customer_id,
+                    "query": query,
+                    "reply": response
+                })
+            else:
+                await websocket.send_json({
+                    "type": "info",
+                    "message": "Message sent to agent, please wait."
+                })
+
     except WebSocketDisconnect:
         customer_manager.disconnect(customer_id)
 
@@ -56,9 +87,19 @@ async def websocket_owner(websocket: WebSocket, owner_id: int, db: AsyncSession 
         try:
             data = await websocket.receive_json()
 
+            if data.get("type") == "toggle_llm":
+                target_customer_id = data.get("customer_id")
+                enabled = data.get("enabled")
+                if target_customer_id is not None:
+                    await crud.update_room_llm(db, target_customer_id, enabled)
+                    await websocket.send_json({
+                        "type": "system",
+                        "message": f"LLM {'enabled' if enabled else 'disabled'} for customer {target_customer_id}"
+                    })
+                continue
+
             if data.get("type") != "reply":   
                continue
-
             message_id = data.get("message_id")
             reply_text = data.get("reply")
 
@@ -72,7 +113,6 @@ async def websocket_owner(websocket: WebSocket, owner_id: int, db: AsyncSession 
             customer_id = await crud.get_customer_id_by_message_id(db, message_id)
             if not customer_id:
                continue
-
             if customer_id in customer_manager.active:
                 await customer_manager.send_to(customer_id, {
                     "type": "owner_reply",
@@ -96,10 +136,6 @@ async def websocket_owner(websocket: WebSocket, owner_id: int, db: AsyncSession 
            owner_manager.disconnect(owner_id, websocket)
            break
 
-        # except Exception as e:
-        #    await websocket.send_json({
-        #        "type": "error",
-        #        "message": "Failed to process reply"
-        #    })
+    
 
  

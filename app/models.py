@@ -52,3 +52,11 @@ class CustomerMessage(Base):
 
 
 
+
+class Room(Base):
+    __tablename__ = "rooms"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, unique=True, index=True, nullable=False)
+    llm_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
