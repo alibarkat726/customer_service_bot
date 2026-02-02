@@ -185,3 +185,29 @@ async def update_room_llm(db: AsyncSession, customer_id: int, enabled: bool):
 async def get_room(db: AsyncSession, customer_id: int):
     result = await db.execute(select(Room).where(Room.customer_id == customer_id))
     return result.scalars().first()
+
+async def get_all_customers_active(db: AsyncSession):
+    rooms_query = select(Room).order_by(Room.created_at.desc())
+    result = await db.execute(rooms_query)
+    rooms = result.scalars().all()
+    
+    customers_data = []
+    for room in rooms:
+        # Get last message for this customer
+        last_msg_query = (
+            select(CustomerMessage)
+            .where(CustomerMessage.customer_id == room.customer_id)
+            .order_by(CustomerMessage.created_at.desc())
+            .limit(1)
+        )
+        res = await db.execute(last_msg_query)
+        last_msg = res.scalars().first()
+        
+        customers_data.append({
+            "customer_id": room.customer_id,
+            "llm_enabled": room.llm_enabled,
+            "last_message": last_msg.content if last_msg else "No messages",
+            "timestamp": last_msg.created_at if last_msg else room.created_at
+        })
+    
+    return customers_data

@@ -9,16 +9,26 @@ from app import sockets_conn
 import os
 import datetime
 from app.models import message_status,Replied_by,Vectors_base
-from langchain_core.runnables import RunnableLambda,RunnableBranch
 from sqlalchemy import select
 from fastapi import HTTPException,logger
 from app.models import reply_status
-
+from langgraph.graph import StateGraph, END
+from typing import TypedDict, Optional
 load_dotenv()
-
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=150,api_key= api_key)
+
+class GraphState(TypedDict):
+    db: AsyncSession
+    customer_id: int
+    query: str
+    message_id: Optional[str]
+    stop: Optional[bool]
+    query_embedding: Optional[list]
+    selected_docs: Optional[list]
+    messages: Optional[list]
+    answer: Optional[str]
 
 
 def cosine_similarity(a, b):
@@ -87,23 +97,23 @@ async def search_and_rerank(db: AsyncSession, query_embedding: list, top_k_candi
 
     return selected_docs
 
-async def chain_rerank_wrapper(inputs):
+async def chain_rerank_wrapper(state: GraphState) -> GraphState:
     selected_docs = await search_and_rerank(
-        inputs["db"],
-        inputs["query_embedding"],
+        state["db"],
+        state["query_embedding"],
         top_k_candidates=20,
         final_k=3,
+    
         min_sim=0.1
     )
-    return {**inputs, "selected_docs": selected_docs}
+    return {**state, "selected_docs": selected_docs}
 
-async def broadcasting_message(inputs):
+async def broadcasting_message(state: GraphState) -> GraphState:
     try:
-        db = inputs["db"]
-        message_id = inputs["message_id"]
-        customer_id = inputs["customer_id"]
-        query = inputs["query"]
-
+        db = state["db"]
+        message_id = state["message_id"]
+        customer_id = state["customer_id"]
+        query = state["query"]
         owner_manager = sockets_conn.owner_manager
 
         if owner_manager and owner_manager.active:
@@ -135,45 +145,39 @@ async def broadcasting_message(inputs):
                 reply=" ",
                 Reply_status=reply_status.not_replied
             )
-
-        return inputs
-
+        return state
     except Exception as e:
         print(f"error {e}")
-        # logger.error("Broadcasting failed", exc_info=True
         raise HTTPException(status_code=404,detail="unable to send message to admin ")
         
+async def check_llm_config(state: GraphState) -> GraphState:
+    db = state["db"]
+    customer_id = state["customer_id"]
+    query = state["query"]
 
-async def check_llm_config(inputs):
-    db = inputs["db"]
-    customer_id = inputs["customer_id"]
-    query = inputs["query"]
-
-    # Check room-specific configuration
+    
     room = await crud.get_or_create_room(db, customer_id)
-    message_id = str(uuid.uuid4())
+    message_id = state.get("message_id") or str(uuid.uuid4())
 
     if not room.llm_enabled:
         return {
-            **inputs,           
+            **state,           
             "message_id": message_id,
             "customer_id": customer_id,
             "query": query,
             "stop": True
         }
-
     return {
-        **inputs,
+        **state,
         "message_id": message_id,
         "stop": False
     }
+async def rerank_docs(state: GraphState) -> GraphState:
+    if state.get("stop"):
+        return state
 
-async def rerank_docs(inputs):
-    if inputs.get("stop"):
-        return inputs
-
-    docs = inputs["docs"]
-    query_embedding = np.array(inputs["query_embedding"], dtype=np.float32)
+    docs = state["docs"]
+    query_embedding = np.array(state["query_embedding"], dtype=np.float32)
     doc_embeddings = [np.array(d.embedding, dtype=np.float32) for d in docs]
     selected = mmr(
         query_embedding,
@@ -181,20 +185,19 @@ async def rerank_docs(inputs):
         docs,
         k=min(3, len(docs))
     )
-
     if not selected:
         selected = docs[:1]
 
-    return {**inputs, "selected_docs": selected}
+    return {**state, "selected_docs": selected}
 
-async def build_messages(inputs):
-    if inputs.get("stop"):
-        return inputs
+async def build_messages(state: GraphState) -> GraphState:
+    if state.get("stop"):
+        return state
 
-    db = inputs["db"]
-    customer_id = inputs["customer_id"]
+    db = state["db"]
+    customer_id = state["customer_id"]
 
-    context = "\n\n".join([doc.content for doc in inputs["selected_docs"]])
+    context = "\n\n".join([doc.content for doc in state["selected_docs"]])
 
     system_prompt = f"""
 You are a helpful customer service agent.Which should always response as a good 
@@ -203,7 +206,7 @@ and dont do counter questions to the user
 Use ONLY this context:
 {context}
 If unrelated, reply:
-"SORRY I’m not aware of this. Can you ask something related to our business?"
+"SORRY I'm not aware of this. Can you ask something related to our business?"
 """
     messages = [SystemMessage(content=system_prompt)]
 
@@ -212,58 +215,79 @@ If unrelated, reply:
         messages.append(HumanMessage(content=chat.content))
         messages.append(AIMessage(content=chat.reply))
 
-    messages.append(HumanMessage(content=inputs["query"]))
+    messages.append(HumanMessage(content=state["query"]))
 
-    return {**inputs, "messages": messages}
+    return {**state, "messages": messages}
 
-async def run_llm(inputs):
-    if inputs.get("stop"):
-        return inputs
-    res = await llm.ainvoke(inputs["messages"])
-    return {**inputs, "answer": res.content.strip()}
+async def run_llm(state: GraphState) -> GraphState:
+    if state.get("stop"):
+        return state
+    res = await llm.ainvoke(state["messages"])
+    return {**state, "answer": res.content.strip()}
 
-async def save_message(inputs):
-    if inputs.get("stop"):
-        return inputs["output"]
+async def save_message(state: GraphState) -> GraphState:
+    if state.get("stop"):
+        return state
 
     await crud.create_customer_message(
-        inputs["db"],
-        inputs["message_id"],
-        inputs["customer_id"],
-        inputs["query"],
+        state["db"],
+        state["message_id"],
+        state["customer_id"],
+        state["query"],
         status=message_status.replied,
         replier=Replied_by.llm,
         Reply_status=reply_status.delivered,
-        reply=inputs["answer"],
+        reply=state["answer"],
         replied_at=datetime.datetime.utcnow()        
     )
-    return inputs["answer"]
-async def embed_query(inputs):
-    if inputs.get("stop"):
-        return inputs
-    emb = await embeddings.aembed_query(inputs["query"])
-    return {**inputs, "query_embedding": emb}
+    return state
+async def embed_query(state: GraphState) -> GraphState:
+    if state.get("stop"):
+        return state
+    emb = await embeddings.aembed_query(state["query"])
+    return {**state, "query_embedding": emb}
 
-chain = RunnableLambda(check_llm_config)
-branch_chain = RunnableBranch(
-    (
-        lambda x: x.get("stop") == False,
-        RunnableLambda(embed_query)
-        | RunnableLambda(chain_rerank_wrapper)
-        | RunnableLambda(build_messages)
-        | RunnableLambda(run_llm)
-        | RunnableLambda(save_message)
-    ),
-    
-        RunnableLambda(broadcasting_message)
-    
+
+def route_after_check(state: GraphState) -> str:
+    """Route to either broadcast or embed based on stop flag"""
+    if state.get("stop"):
+        return "broadcast"
+    else:
+        return "embed"
+
+
+workflow = StateGraph(GraphState)
+
+workflow.add_node("check_llm_config", check_llm_config)
+workflow.add_node("broadcast", broadcasting_message)
+workflow.add_node("embed", embed_query)
+workflow.add_node("search", chain_rerank_wrapper)
+workflow.add_node("build_msg", build_messages)
+workflow.add_node("llm", run_llm)
+workflow.add_node("save", save_message)
+workflow.set_entry_point("check_llm_config")
+workflow.add_conditional_edges(
+    "check_llm_config",
+    route_after_check,
+    {
+        "broadcast": "broadcast",
+        "embed": "embed"
+    }
 )
-process_chain = (
-    chain | branch_chain
-)
-async def process_query(db, customer_id, query):
-    return await process_chain.ainvoke({
+workflow.add_edge("embed", "search")
+workflow.add_edge("search", "build_msg")
+workflow.add_edge("build_msg", "llm")
+workflow.add_edge("llm", "save")
+workflow.add_edge("save", END)
+
+workflow.add_edge("broadcast", END)
+graph = workflow.compile()
+
+async def process_query(db, customer_id, query, message_id=None):
+    result = await graph.ainvoke({
         "db": db,
         "customer_id": customer_id,
-        "query": query
+        "query": query,
+        "message_id": message_id
     })
+    return result.get("answer")

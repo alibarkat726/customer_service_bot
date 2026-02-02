@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud, service,database
 from pydantic import BaseModel
@@ -7,13 +8,20 @@ from contextlib import asynccontextmanager
 from app.websockets import router
 from app.database import init_db,engine
 
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db(engine)
     yield
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router=router)
 class QueryRequest(BaseModel):
     query: str
@@ -60,3 +68,8 @@ async def add_many_documents(request: BatchDocRequest, db: AsyncSession = Depend
     ]
     await crud.add_many_documents(db, docs_data)
     return {"message": f"{len(docs_data)} documents added successfully"}
+
+@app.get("/admin/customers")
+async def get_all_customers(db: AsyncSession = Depends(database.get_db)):
+    customers = await crud.get_all_customers_active(db)
+    return customers
