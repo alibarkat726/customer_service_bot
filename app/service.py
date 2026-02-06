@@ -38,7 +38,7 @@ def cosine_similarity(a, b):
     b_norms = np.where(b_norms == 0, 1e-10, b_norms)
     return np.dot(b, a) / (a_norm * b_norms)
 
-def mmr(query_embedding, doc_embeddings, docs, k=3, lambda_mult=0.5):
+def mmr(query_embedding, doc_embeddings, docs,k, lambda_mult=0.5):
     if not docs:
         return []
 
@@ -70,7 +70,7 @@ def mmr(query_embedding, doc_embeddings, docs, k=3, lambda_mult=0.5):
 
     return [docs[i] for i in selected_indices]
 
-async def search_and_rerank(db: AsyncSession, query_embedding: list, top_k_candidates: int = 10, final_k: int = 3, min_sim: float = 0.1):
+async def search_and_rerank(db: AsyncSession, query_embedding: list, top_k_candidates: int = 20, final_k: int = 10, min_sim: float = 0.1):
     distance_limit = 1 - min_sim  
 
     query = (
@@ -102,8 +102,7 @@ async def chain_rerank_wrapper(state: GraphState) -> GraphState:
         state["db"],
         state["query_embedding"],
         top_k_candidates=20,
-        final_k=3,
-    
+        final_k=20,
         min_sim=0.1
     )
     return {**state, "selected_docs": selected_docs}
@@ -183,7 +182,7 @@ async def rerank_docs(state: GraphState) -> GraphState:
         query_embedding,
         doc_embeddings,
         docs,
-        k=min(3, len(docs))
+        k=min(5, len(docs))
     )
     if not selected:
         selected = docs[:1]
@@ -205,7 +204,7 @@ You are a polite and professional customer support representative for our busine
 Your role:
 - Respond like a real human staff member, not a chatbot.
 - Be warm, calm, and respectful.
-- Give clear and complete answers using ONLY the provided context.
+- Give clear and complete answers using the provided context.
 - Do NOT make assumptions or invent information.
 - Do NOT hallucinate.
 
@@ -216,8 +215,9 @@ Conversation rules:
 - Avoid repetitive or scripted responses.
 
 Knowledge rules:
-- Use ONLY this context to answer:
+- Use this context to answer:
 {context}
+And make sure to answer with a god structure.
 
 If the question is unrelated to the business or cannot be answered using the context, reply exactly with:
 "SORRY, I'm not aware of this. Can you ask something related to our business?"
