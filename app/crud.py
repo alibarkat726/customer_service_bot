@@ -5,7 +5,15 @@ from app.models import Vectors_base, SystemConfig, Room
 from pgvector.sqlalchemy import Vector
 import hashlib
 from typing import Optional
-
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+async def create_document_chunks(document:str):
+    textSplitter = RecursiveCharacterTextSplitter(
+        chunk_size = 400,
+        chunk_overlap = 100,
+        seperators = ["\n\n","\n"," ",""]
+    ) 
+    chunks = textSplitter.split_text(document)
+    return chunks
 from app.models import CustomerMessage,message_status,Replied_by,reply_status
 async def get_system_config(db: AsyncSession):
     result = await db.execute(select(SystemConfig).where(SystemConfig.id == 1))
@@ -24,20 +32,20 @@ async def set_llm_enabled(db: AsyncSession, enabled: bool):
     await db.refresh(config)
     return config
 
-async def add_document(db: AsyncSession, content: str, embedding: list):
-    doc = Vectors_base(content=content, embedding=embedding)
-    db.add(doc)
+async def add_chunk(
+    db: AsyncSession,
+    content: str,
+    embedding: list,
+):
+    chunk = Vectors_base(
+        content=content,
+        embedding=embedding
+    )
+    db.add(chunk)
     await db.commit()
-    await db.refresh(doc)
-    return doc
+    await db.refresh(chunk)
+    return chunk
 
-async def add_many_documents(db: AsyncSession, docs_data: list[dict]):
-    docs = [Vectors_base(content=d["content"], embedding=d["embedding"]) for d in docs_data]
-    db.add_all(docs)
-    await db.commit()
-    for doc in docs:
-        await db.refresh(doc)
-    return docs
 
 def hash_query(query: str) -> str:
     return hashlib.sha256(query.strip().lower().encode()).hexdigest()

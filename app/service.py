@@ -18,7 +18,6 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=150,api_key= api_key)
-
 class GraphState(TypedDict):
     db: AsyncSession
     customer_id: int
@@ -41,10 +40,8 @@ def cosine_similarity(a, b):
 def mmr(query_embedding, doc_embeddings, docs,k, lambda_mult=0.5):
     if not docs:
         return []
-
     doc_embeddings = np.array(doc_embeddings, dtype=np.float32)
     query_embedding = np.array(query_embedding, dtype=np.float32)
-
     n_docs = doc_embeddings.shape[0]
     selected_indices = []
     candidate_indices = np.arange(n_docs)
@@ -84,8 +81,7 @@ async def search_and_rerank(db: AsyncSession, query_embedding: list, top_k_candi
     documents = result.scalars().all()
 
     if not documents:
-        return []
-
+        return [] 
     doc_embeddings = [np.array(doc.embedding, dtype=np.float32) for doc in documents]
 
     selected_docs = mmr(
@@ -96,7 +92,6 @@ async def search_and_rerank(db: AsyncSession, query_embedding: list, top_k_candi
     )
 
     return selected_docs
-
 async def chain_rerank_wrapper(state: GraphState) -> GraphState:
     selected_docs = await search_and_rerank(
         state["db"],
@@ -114,7 +109,6 @@ async def broadcasting_message(state: GraphState) -> GraphState:
         customer_id = state["customer_id"]
         query = state["query"]
         owner_manager = sockets_conn.owner_manager
-
         if owner_manager and owner_manager.active:
             await crud.create_customer_message(
                 db,
@@ -126,7 +120,6 @@ async def broadcasting_message(state: GraphState) -> GraphState:
                 reply = " ",
                 Reply_status=reply_status.not_replied
             )
-
             await owner_manager.broadcast({
                 "type": "new_customer_message",
                 "message_id": message_id,
@@ -153,11 +146,8 @@ async def check_llm_config(state: GraphState) -> GraphState:
     db = state["db"]
     customer_id = state["customer_id"]
     query = state["query"]
-
-    
     room = await crud.get_or_create_room(db, customer_id)
     message_id = state.get("message_id") or str(uuid.uuid4())
-
     if not room.llm_enabled:
         return {
             **state,           
@@ -174,7 +164,6 @@ async def check_llm_config(state: GraphState) -> GraphState:
 async def rerank_docs(state: GraphState) -> GraphState:
     if state.get("stop"):
         return state
-
     docs = state["docs"]
     query_embedding = np.array(state["query_embedding"], dtype=np.float32)
     doc_embeddings = [np.array(d.embedding, dtype=np.float32) for d in docs]
@@ -186,42 +175,33 @@ async def rerank_docs(state: GraphState) -> GraphState:
     )
     if not selected:
         selected = docs[:1]
-
     return {**state, "selected_docs": selected}
 
 async def build_messages(state: GraphState) -> GraphState:
     if state.get("stop"):
         return state
-
     db = state["db"]
     customer_id = state["customer_id"]
-
     context = "\n\n".join([doc.content for doc in state["selected_docs"]])
-
     system_prompt = f"""
 You are a polite and professional customer support representative for our business.
-
 Your role:
 - Respond like a real human staff member, not a chatbot.
 - Be warm, calm, and respectful.
 - Give clear and complete answers using the provided context.
 - Do NOT make assumptions or invent information.
 - Do NOT hallucinate.
-
 Conversation rules:
 - Do NOT ask follow-up questions unless clarification is genuinely required.
 - Do NOT end every response with phrases like "How can I help you further?" or similar.
 - If the user's question is fully answered, stop naturally.
 - Avoid repetitive or scripted responses.
-
 Knowledge rules:
 - Use this context to answer:
 {context}
 And make sure to answer with a god structure.
-
 If the question is unrelated to the business or cannot be answered using the context, reply exactly with:
 "SORRY, I'm not aware of this. Can you ask something related to our business?"
-
 Tone:
 - Friendly but not overly enthusiastic
 - Natural and human
@@ -247,7 +227,6 @@ async def run_llm(state: GraphState) -> GraphState:
 async def save_message(state: GraphState) -> GraphState:
     if state.get("stop"):
         return state
-
     await crud.create_customer_message(
         state["db"],
         state["message_id"],
@@ -273,10 +252,7 @@ def route_after_check(state: GraphState) -> str:
         return "broadcast"
     else:
         return "embed"
-
-
 workflow = StateGraph(GraphState)
-
 workflow.add_node("check_llm_config", check_llm_config)
 workflow.add_node("broadcast", broadcasting_message)
 workflow.add_node("embed", embed_query)
