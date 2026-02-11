@@ -49,7 +49,7 @@ async def enable_llm(enabled: bool, db: AsyncSession = Depends(database.get_db))
 
 @app.post("/admin/add/one")
 async def ingest_document(request: DocRequest, db: AsyncSession = Depends(database.get_db)):
-    chunks = crud.create_document_chunks(request)
+    chunks = crud.create_document_chunks(request.content)
     embeddings = await service.embeddings.aembed_documents(chunks)
     saved_chunks = []
     for chunk_text,embedding in zip(chunks,embeddings):

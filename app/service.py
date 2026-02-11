@@ -273,8 +273,7 @@ workflow.add_edge("embed", "search")
 workflow.add_edge("search", "build_msg")
 workflow.add_edge("build_msg", "llm")
 workflow.add_edge("llm", "save")
-workflow.add_edge("save", END)
-
+workflow.add_edge("save", END) 
 workflow.add_edge("broadcast", END)
 graph = workflow.compile()
 
