@@ -10,7 +10,7 @@ async def create_document_chunks(document:str):
     textSplitter = RecursiveCharacterTextSplitter(
         chunk_size = 400,
         chunk_overlap = 100,
-        seperators = ["\n\n","\n"," ",""]
+        separators = ["\n\n","\n"," ",""]
     ) 
     chunks = textSplitter.split_text(document)
     return chunks
@@ -42,8 +42,6 @@ async def add_chunk(
         embedding=embedding
     )
     db.add(chunk)
-    await db.commit()
-    await db.refresh(chunk)
     return chunk
 
 

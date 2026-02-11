@@ -54,7 +54,9 @@ async def ingest_document(request: DocRequest, db: AsyncSession = Depends(databa
     saved_chunks = []
     for chunk_text,embedding in zip(chunks,embeddings):
         chunk = await crud.add_chunk(db,chunk_text,embedding)
+
         saved_chunks.append(chunk)
+    await db.commit()
     return {
         "message":"Document ingested successfully",
         "chunks_saved":len(saved_chunks)
