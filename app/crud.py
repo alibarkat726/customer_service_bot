@@ -6,7 +6,7 @@ from pgvector.sqlalchemy import Vector
 import hashlib
 from typing import Optional
 from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
-async def create_document_chunks(document:str):
+def create_document_chunks(document:str):
     textSplitter = RecursiveCharacterTextSplitter(
         chunk_size = 400,
         chunk_overlap = 100,
