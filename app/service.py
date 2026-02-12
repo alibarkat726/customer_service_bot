@@ -14,6 +14,7 @@ from fastapi import HTTPException,logger
 from app.models import reply_status
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional
+import LTM
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
@@ -28,6 +29,8 @@ class GraphState(TypedDict):
     selected_docs: Optional[list]
     messages: Optional[list]
     answer: Optional[str]
+    memory_text:str 
+    is_new_mem:bool
 
 
 def cosine_similarity(a, b):
@@ -180,6 +183,9 @@ async def rerank_docs(state: GraphState) -> GraphState:
 async def build_messages(state: GraphState) -> GraphState:
     if state.get("stop"):
         return state
+    
+    config = {"configurable": {"user_id": state["customer_id"]}}
+    add_memory = LTM.graph.invoke(({"messages": [{"role": "user", "content": "Hi, my name is Nitish"}]}, config))
     db = state["db"]
     customer_id = state["customer_id"]
     context = "\n\n".join([doc.content for doc in state["selected_docs"]])
@@ -208,12 +214,10 @@ Tone:
 - Short and helpful, like an in-store staff member
 """
     messages = [SystemMessage(content=system_prompt)]
-
     history = await crud.get_chat_history(db, customer_id, limit=5)
     for chat in history:
         messages.append(HumanMessage(content=chat.content))
         messages.append(AIMessage(content=chat.reply))
-
     messages.append(HumanMessage(content=state["query"]))
 
     return {**state, "messages": messages}

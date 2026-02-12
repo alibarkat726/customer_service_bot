@@ -44,11 +44,9 @@ async def add_chunk(
     db.add(chunk)
     return chunk
 
-
 def hash_query(query: str) -> str:
     return hashlib.sha256(query.strip().lower().encode()).hexdigest()
 
-#Websocket functions 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models import CustomerMessage

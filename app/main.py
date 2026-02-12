@@ -65,3 +65,7 @@ async def ingest_document(request: DocRequest, db: AsyncSession = Depends(databa
 async def get_all_customers(db: AsyncSession = Depends(database.get_db)):
     customers = await crud.get_all_customers_active(db)
     return customers
+
+@app.post("/toogle/llm")
+async def toogle_llm(db: AsyncSession = Depends(database.get_db)):
+    get_config = await crud.get_system_config()
