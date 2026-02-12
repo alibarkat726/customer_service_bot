@@ -14,8 +14,9 @@ from fastapi import HTTPException,logger
 from app.models import reply_status
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional
-import LTM
+import app.LTM as LTM
 load_dotenv()
+
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=150,api_key= api_key)
@@ -227,7 +228,6 @@ async def run_llm(state: GraphState) -> GraphState:
         return state
     res = await llm.ainvoke(state["messages"])
     return {**state, "answer": res.content.strip()}
-
 async def save_message(state: GraphState) -> GraphState:
     if state.get("stop"):
         return state
