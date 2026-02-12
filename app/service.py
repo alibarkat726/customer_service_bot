@@ -14,9 +14,9 @@ from fastapi import HTTPException,logger
 from app.models import reply_status
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional
-import app.LTM as LTM
-load_dotenv()
+from app import LTM
 
+load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=150,api_key= api_key)
