@@ -16,10 +16,6 @@ from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional
 from app import LTM
 
-
-
-
-
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small",api_key=api_key)
@@ -224,7 +220,6 @@ Tone:
         messages.append(HumanMessage(content=chat.content))
         messages.append(AIMessage(content=chat.reply))
     messages.append(HumanMessage(content=state["query"]))
-
     return {**state, "messages": messages}
 
 async def run_llm(state: GraphState) -> GraphState:

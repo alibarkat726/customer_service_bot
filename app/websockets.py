@@ -52,9 +52,7 @@ async def websocket_customer(websocket: WebSocket, customer_id: int, db: AsyncSe
                 "message": query,
                 "timestamp": str(datetime.datetime.utcnow())
             })
-
             response = await service.process_query(db, customer_id, query, message_id)
-            
             if isinstance(response, str):
                 await websocket.send_json({
                     "type": "llm_reply",
@@ -72,11 +70,8 @@ async def websocket_customer(websocket: WebSocket, customer_id: int, db: AsyncSe
                     "type": "info",
                     "message": "Message sent to admin."
                 })
-
     except WebSocketDisconnect:
         customer_manager.disconnect(customer_id)
-
-
 @router.websocket("/ws/owner/{owner_id}")
 async def websocket_owner(websocket: WebSocket, owner_id: int, db: AsyncSession = Depends(get_db)):
     await owner_manager.connect(owner_id, websocket)
